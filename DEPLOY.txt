@@ -1,0 +1,12 @@
+# Checklist singkat sebelum production
+# (lihat README.md untuk langkah lengkap)
+
+## Docker
+# 1. Set JWT_SECRET di environment
+# 2. docker compose up -d --build
+# 3. Seed (sekali): docker compose exec app npx tsx prisma/seed.ts
+
+## VPS Node
+# 1. cp .env.example .env → edit JWT_SECRET + DATABASE_URL
+# 2. npm ci && npm run build && npm run setup
+# 3. npm start  (atau pm2)

@@ -1,0 +1,17 @@
+# Docker build context
+node_modules
+.next
+.git
+.env
+.env.*
+!.env.example
+*.md
+.agents
+.claude
+.windsurf
+.cursor
+.vscode
+*.db
+*.db-journal
+tsconfig.tsbuildinfo
+npm-debug.log*

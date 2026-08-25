@@ -1,0 +1,16 @@
+services:
+  app:
+    build: .
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: file:/app/data/prod.db
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-secret-at-least-32-chars}
+      NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-CleanStream Laundry}
+    volumes:
+      - laundry_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  laundry_data:

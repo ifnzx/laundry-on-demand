@@ -1,0 +1,318 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String   @unique
+  email     String?  @unique
+  password  String
+  photo     String?
+  role      String   @default("customer") // customer | courier | admin
+  status    String   @default("active") // active | inactive | suspended
+  vehicle   String?
+  isOnline  Boolean  @default(false)
+  rating    Float    @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  addresses       Address[]
+  orders          Order[]          @relation("CustomerOrders")
+  courierOrders   Order[]          @relation("CourierOrders")
+  payments        Payment[]
+  ratingsGiven    Rating[]         @relation("CustomerRatings")
+  ratingsReceived Rating[]         @relation("CourierRatings")
+  notifications   Notification[]
+  deliveryProofs  DeliveryProof[]
+  statusChanges   OrderStatusHistory[]
+  auditLogs       AuditLog[]
+  messages        OrderMessage[]
+
+  @@map("users")
+}
+
+model Address {
+  id            String   @id @default(cuid())
+  userId        String
+  label         String
+  recipientName String
+  phone         String
+  address       String
+  latitude      Float
+  longitude     Float
+  notes         String?
+  isDefault     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  @@map("addresses")
+}
+
+model Outlet {
+  id              String   @id @default(cuid())
+  name            String
+  address         String
+  latitude        Float
+  longitude       Float
+  phone           String
+  serviceRadiusKm Float    @default(10)
+  status          String   @default("active") // active | inactive
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  orders Order[]
+
+  @@map("outlets")
+}
+
+model Service {
+  id                 String   @id @default(cuid())
+  name               String
+  description        String?
+  price              Float
+  pricingType        String   @default("per_kg") // per_kg | per_item | fixed
+  estimatedDuration  Int      @default(48) // hours
+  status             String   @default("active") // active | inactive
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  orders Order[]
+
+  @@map("services")
+}
+
+model Order {
+  id                     String    @id @default(cuid())
+  orderNumber            String    @unique
+  customerId             String
+  outletId               String
+  serviceId              String
+  courierId              String?
+  addressId              String
+
+  estimatedWeight        Float
+  actualWeight           Float?
+  pricePerKg             Float
+  estimatedLaundryPrice  Float
+  actualLaundryPrice     Float?
+  distanceKm             Float
+  deliveryFee            Float
+  discount               Float    @default(0)
+  subtotal               Float
+  total                  Float
+  paidAmount             Float    @default(0)
+  remainingAmount        Float    @default(0)
+
+  paymentStatus          String   @default("pending") // pending | paid | partial | refunded
+  orderStatus            String   @default("pending_payment")
+
+  pickupType             String   // pickup_now | scheduled
+  pickupDate             String?
+  pickupTimeStart        String?
+  pickupTimeEnd          String?
+
+  notes                  String?
+  promoCode              String?
+  pickupPhoto            String?
+  assignedAt             DateTime?
+  completedAt            DateTime?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  customer    User                 @relation("CustomerOrders", fields: [customerId], references: [id])
+  courier     User?                @relation("CourierOrders", fields: [courierId], references: [id])
+  outlet      Outlet               @relation(fields: [outletId], references: [id])
+  service     Service              @relation(fields: [serviceId], references: [id])
+  address     Address              @relation(fields: [addressId], references: [id])
+  payments    Payment[]
+  statusHistory OrderStatusHistory[]
+  deliveryProof DeliveryProof?
+  rating      Rating?
+  notifications Notification[]
+  platformFee PlatformFeeEntry?
+  messages    OrderMessage[]
+
+  @@map("orders")
+}
+
+/// SaaS platform fee (Rp per completed order)
+model PlatformFeeEntry {
+  id        String   @id @default(cuid())
+  orderId   String   @unique
+  invoiceId String
+  amount    Float
+  yearMonth String // "YYYY-MM"
+  createdAt DateTime @default(now())
+
+  order   Order           @relation(fields: [orderId], references: [id])
+  invoice PlatformInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([yearMonth])
+  @@map("platform_fee_entries")
+}
+
+/// Monthly SaaS invoice — pay at month end; unpaid locks the system
+model PlatformInvoice {
+  id          String    @id @default(cuid())
+  yearMonth   String    @unique // "YYYY-MM"
+  totalAmount Float     @default(0)
+  feeCount    Int       @default(0)
+  /// open | due | paid | waived
+  status      String    @default("open")
+  dueAt       DateTime
+  paidAt      DateTime?
+  paidNote    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  entries PlatformFeeEntry[]
+
+  @@map("platform_invoices")
+}
+
+model Payment {
+  id            String    @id @default(cuid())
+  orderId       String
+  userId        String
+  amount        Float
+  paymentType   String    // initial | additional
+  paymentMethod String    @default("qris") // qris | bank_transfer | ewallet | cash
+  transactionId String?
+  status        String    @default("pending") // pending | paid | failed | expired | refunded
+  paidAt        DateTime?
+  createdAt     DateTime  @default(now())
+
+  order Order @relation(fields: [orderId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@map("payments")
+}
+
+model OrderStatusHistory {
+  id        String   @id @default(cuid())
+  orderId   String
+  status    String
+  changedBy String?
+  note      String?
+  createdAt DateTime @default(now())
+
+  order   Order @relation(fields: [orderId], references: [id])
+  changer User? @relation(fields: [changedBy], references: [id])
+
+  @@map("order_status_history")
+}
+
+model DeliveryProof {
+  id            String   @id @default(cuid())
+  orderId       String   @unique
+  courierId     String
+  recipientName String
+  photoUrl      String?
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  order   Order @relation(fields: [orderId], references: [id])
+  courier User  @relation(fields: [courierId], references: [id])
+
+  @@map("delivery_proofs")
+}
+
+model Rating {
+  id            String   @id @default(cuid())
+  orderId       String   @unique
+  customerId    String
+  courierId     String?
+  laundryRating Int
+  courierRating Int?
+  comment       String?
+  createdAt     DateTime @default(now())
+
+  order    Order @relation(fields: [orderId], references: [id])
+  customer User  @relation("CustomerRatings", fields: [customerId], references: [id])
+  courier  User? @relation("CourierRatings", fields: [courierId], references: [id])
+
+  @@map("ratings")
+}
+
+model Promo {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  name            String
+  type            String   // percentage | fixed
+  value           Float
+  minimumOrder    Float    @default(0)
+  maximumDiscount Float?
+  startDate       DateTime
+  endDate         DateTime
+  usageLimit      Int?
+  usedCount       Int      @default(0)
+  status          String   @default("active")
+  createdAt       DateTime @default(now())
+
+  @@map("promos")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  orderId   String?
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order Order? @relation(fields: [orderId], references: [id])
+
+  @@map("notifications")
+}
+
+/// In-app chat: customer ↔ outlet admin (per order)
+model OrderMessage {
+  id        String   @id @default(cuid())
+  orderId   String
+  senderId  String
+  body      String   @default("")
+  imageUrl  String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  order  Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  sender User  @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@index([senderId])
+  @@map("order_messages")
+}
+
+model Setting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+
+  @@map("settings")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  oldValue  String?
+  newValue  String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
